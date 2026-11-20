@@ -1,135 +1,83 @@
-// Keyboard + mouse input. Held keys steer; one-shot presses (enter car, shoot,
-// pause, mute, restart) queue as bit flags and are taken once, so a press between
-// frames is never lost and never counted twice. Mouse drag orbits the camera;
-// click fires the weapon. Pointer lock is deliberately NOT used: it breaks
-// headless play-testing and screenshot staging, and drag-orbit plays better in
-// a browser window anyway.
-//
-// The input layer also stamps every keydown with performance.now() so the
-// performance harness can measure true input latency (keydown -> the sim reacts).
-export const ACTION_ENTER = 1;
-export const ACTION_SHOOT = 2;
-export const ACTION_PAUSE = 4;
-export const ACTION_MUTE = 8;
-export const ACTION_CONFIRM = 16;
-
-// One table for every binding: action keys are edge-triggered, movement keys held.
-const BINDINGS = {
-  forward: ['KeyW', 'ArrowUp'],
-  back: ['KeyS', 'ArrowDown'],
-  left: ['KeyA', 'ArrowLeft'],
-  right: ['KeyD', 'ArrowRight'],
-  run: ['ShiftLeft', 'ShiftRight'],
-  enter: ['KeyE'],
-  shoot: ['KeyF'],
-  pause: ['KeyP', 'Escape'],
-  mute: ['KeyM'],
-  confirm: ['Space', 'Enter'],
-};
-
-const EDGE_ACTIONS = [
-  ['enter', ACTION_ENTER],
-  ['shoot', ACTION_SHOOT],
-  ['pause', ACTION_PAUSE],
-  ['mute', ACTION_MUTE],
-  ['confirm', ACTION_CONFIRM],
-];
-
-const PREVENT_DEFAULT = new Set(['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight']);
-
-function buildLookup() {
-  const lookup = new Map();
-  for (const [name, codes] of Object.entries(BINDINGS)) {
-    for (const code of codes) lookup.set(code, name);
-  }
-  return lookup;
-}
-const LOOKUP = buildLookup();
-const EDGE_MAP = new Map(EDGE_ACTIONS);
-
+// NEON BAY — keyboard and mouse input. Keys are held state; actions are
+// edge-triggered (a keydown fires once, never on repeat), and the simulation
+// consumes each action on its first substep so a slow frame can never fire
+// one twice. A click only shoots when the press barely moved (a drag orbits
+// the camera instead).
 export function createInput(canvas) {
-  const keys = new Set();
-  let actions = 0;
-  let dragX = 0;
-  let dragY = 0;
+  const keys = { up: false, down: false, left: false, right: false, run: false };
+  const actions = { steal: false, fire: false, pause: false, mute: false, confirm: false };
+  const look = { dx: 0, dy: 0 };
+  let lastDragAt = 0;
   let dragging = false;
-  let lastX = 0;
-  let lastY = 0;
-  // Stamps the last keydown (code + time) for the latency probe in tools/fps.mjs.
-  let lastKey = { code: '', at: 0 };
+  let downX = 0;
+  let downY = 0;
+  let downAt = 0;
+  let moved = 0;
 
-  window.addEventListener('keydown', (event) => {
-    lastKey = { code: event.code, at: performance.now() };
-    if (event.repeat) return;
-    const name = LOOKUP.get(event.code);
-    if (!name) return;
-    if (EDGE_MAP.has(name)) {
-      actions |= EDGE_MAP.get(name);
-    } else {
-      keys.add(event.code);
+  const keyMap = {
+    KeyW: 'up', ArrowUp: 'up',
+    KeyS: 'down', ArrowDown: 'down',
+    KeyA: 'left', ArrowLeft: 'left',
+    KeyD: 'right', ArrowRight: 'right',
+    ShiftLeft: 'run', ShiftRight: 'run',
+  };
+
+  function onKeyDown(e) {
+    const k = keyMap[e.code];
+    if (k) {
+      keys[k] = true;
+      e.preventDefault();
+      return;
     }
-    if (PREVENT_DEFAULT.has(event.code)) event.preventDefault();
-  });
-  window.addEventListener('keyup', (event) => keys.delete(event.code));
-  window.addEventListener('blur', () => keys.clear());
-
-  canvas.addEventListener('pointerdown', (event) => {
-    dragging = true;
-    lastX = event.clientX;
-    lastY = event.clientY;
-    if (event.button === 0) actions |= ACTION_SHOOT;
-  });
-  window.addEventListener('pointermove', (event) => {
-    if (!dragging) return;
-    dragX += event.clientX - lastX;
-    dragY += event.clientY - lastY;
-    lastX = event.clientX;
-    lastY = event.clientY;
-  });
-  window.addEventListener('pointerup', () => {
-    dragging = false;
-  });
-  // Losing the pointer mid-drag must not leave the camera spinning.
-  window.addEventListener('pointercancel', () => {
-    dragging = false;
-  });
-
-  function held(name) {
-    for (const code of BINDINGS[name]) {
-      if (keys.has(code)) return true;
-    }
-    return false;
+    if (e.repeat) return;
+    if (e.code === 'KeyE') actions.steal = true;
+    else if (e.code === 'KeyF') actions.fire = true;
+    else if (e.code === 'KeyP' || e.code === 'Escape') actions.pause = true;
+    else if (e.code === 'KeyM') actions.mute = true;
+    else if (e.code === 'Enter' || e.code === 'Space') actions.confirm = true;
+    if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) e.preventDefault();
   }
+
+  function onKeyUp(e) {
+    const k = keyMap[e.code];
+    if (k) keys[k] = false;
+  }
+
+  function onPointerDown(e) {
+    dragging = true;
+    moved = 0;
+    downX = e.clientX;
+    downY = e.clientY;
+    downAt = performance.now();
+    canvas.setPointerCapture(e.pointerId);
+  }
+
+  function onPointerMove(e) {
+    if (!dragging) return;
+    const dx = e.movementX || 0;
+    const dy = e.movementY || 0;
+    moved += Math.abs(dx) + Math.abs(dy);
+    look.dx += dx;
+    look.dy += dy;
+    lastDragAt = performance.now();
+  }
+
+  function onPointerUp(e) {
+    dragging = false;
+    const dt = performance.now() - downAt;
+    if (moved < 6 && dt < 400) actions.fire = true;
+  }
+
+  window.addEventListener('keydown', onKeyDown);
+  window.addEventListener('keyup', onKeyUp);
+  canvas.addEventListener('pointerdown', onPointerDown);
+  canvas.addEventListener('pointermove', onPointerMove);
+  canvas.addEventListener('pointerup', onPointerUp);
+  canvas.addEventListener('pointercancel', () => { dragging = false; });
 
   return {
-    /** -1..1 forward/back, -1..1 left/right, run held. */
-    move() {
-      return {
-        fwd: (held('forward') ? 1 : 0) - (held('back') ? 1 : 0),
-        strafe: (held('right') ? 1 : 0) - (held('left') ? 1 : 0),
-        run: held('run'),
-      };
-    },
-    /** Mouse drag delta since the last call, in pixels. */
-    takeDrag() {
-      const d = { x: dragX, y: dragY };
-      dragX = 0;
-      dragY = 0;
-      return d;
-    },
-    /** One-shot action flags queued since the last call (consumed). */
-    takeActions() {
-      const taken = actions;
-      actions = 0;
-      return taken;
-    },
-    /** True while any movement key is held — used for the idle detector. */
-    anyMovementHeld() {
-      return held('forward') || held('back') || held('left') || held('right');
-    },
-    /** Last keydown stamp, for input-latency measurement. */
-    lastKey() {
-      return lastKey;
-    },
+    keys, actions, look,
+    get lastDragAt() { return lastDragAt; },
+    get dragging() { return dragging; },
   };
 }

@@ -1,29 +1,42 @@
 {
   "shots": [
     {
-      "name": "1-start.jpg",
-      "res": "1280x720 (2x supersampled)",
-      "quality": 90,
-      "bytes": 125606
+      "id": "start",
+      "file": "1-start.jpg",
+      "width": 1280,
+      "height": 720,
+      "bytes": 86169,
+      "errors": [],
+      "external": []
     },
     {
-      "name": "2-drive.jpg",
-      "res": "1280x720 (2x supersampled)",
-      "quality": 90,
-      "bytes": 155107
+      "id": "drive",
+      "file": "2-drive.jpg",
+      "width": 1280,
+      "height": 720,
+      "bytes": 105188,
+      "errors": [],
+      "external": []
     },
     {
-      "name": "3-chase.jpg",
-      "res": "1280x720 (2x supersampled)",
-      "quality": 90,
-      "bytes": 145579
+      "id": "chase",
+      "file": "3-chase.jpg",
+      "width": 1280,
+      "height": 720,
+      "bytes": 116109,
+      "errors": [],
+      "external": []
     },
     {
-      "name": "4-mission.jpg",
-      "res": "1280x720 (2x supersampled)",
-      "quality": 90,
-      "bytes": 116883
+      "id": "mission",
+      "file": "4-mission.jpg",
+      "width": 1280,
+      "height": 720,
+      "bytes": 75564,
+      "errors": [],
+      "external": []
     }
   ],
-  "failed": false
+  "errors": [],
+  "external": []
 }

@@ -1,290 +1,259 @@
-// NEON BAY — boot and the one loop. Input is read every frame, the world advances
-// in fixed 1/60 s steps (several in a slow frame, none in a fast one), the renderer
-// paints what is there. Screens: title, play, paused, busted, wasted.
-//
-// ?seed=N fixes the city. ?shot=start|drive|chase|mission (with &seed=N) stages
-// that scene instead of running the loop, paints it three times and sets
-// window.__shotReady for a screenshot. window.__fps / window.__game expose the
-// live frame rate and renderer stats for the performance harness, and
-// window.__debug (with ?debug=1) exposes the world for headless play-tests.
-import { STEP, SAVE_KEY } from './config.js';
-import { createRandom, clamp, lerpAngle } from './random.js';
-import {
-  createWorld, EVENT_BUSTED, EVENT_CRASH, EVENT_EXPLOSION, EVENT_FARE,
-  EVENT_MISSION, EVENT_PICKUP, EVENT_SHOT, EVENT_WASTED,
-} from './world.js';
-import { ACTION_CONFIRM, ACTION_ENTER, ACTION_MUTE, ACTION_PAUSE, ACTION_SHOOT, createInput } from './input.js';
+// NEON BAY — bootstrap and the frame loop. Owns the game state (title,
+// playing, paused), the fixed-step simulation, the camera auto-align while
+// driving, the save cadence, and the headless hooks the capture tools use:
+// window.__shotReady (set once a staged shot has settled), window.__fps,
+// window.__errors, and window.__game / window.__debug.
+import * as THREE from '../vendor/three.module.min.js';
+import { CFG } from './config.js';
+import { createWorld, stepWorld, serializeWorld, deserializeWorld, saveSummary } from './world.js';
 import { createRenderer } from './render.js';
 import { createHud } from './hud.js';
+import { createInput } from './input.js';
 import { createAudio } from './audio.js';
 import { stageShot } from './shots.js';
 
-const MAX_FRAME = 0.25; // a hung tab never fast-forwards more than this per frame
+const params = new URLSearchParams(location.search);
+const seedParam = parseInt(params.get('seed') || '', 10);
+const seed = Number.isFinite(seedParam) ? seedParam : CFG.seed;
+const shotName = params.get('shot');
+const debug = params.get('debug') === '1';
 
-const params = new URLSearchParams(window.location.search);
-const shot = params.get('shot');
-const seedParam = Number.parseInt(params.get('seed') ?? '', 10);
-const seed = Number.isInteger(seedParam) ? seedParam : 1;
-
-window.__errors = [];
-window.addEventListener('error', (event) => {
-  window.__errors.push(String(event.message || event.error || 'unknown error'));
-});
-window.addEventListener('unhandledrejection', (event) => {
-  window.__errors.push(`unhandled rejection: ${event.reason}`);
-});
-
+const world = createWorld(seed);
 const canvas = document.getElementById('game');
-const status = document.getElementById('status');
-const world = createWorld(createRandom(seed));
-const renderer = createRenderer(canvas, world);
-const hud = createHud(world);
+const render = createRenderer(canvas, world);
 const audio = createAudio();
 const input = createInput(canvas);
 
-// Debug hook for the headless play-test harness (?debug=1): exposes the world so
-// the harness can stage busy scenes (drive, chase) and measure input latency.
-// Never enabled in normal play; it changes nothing about the game itself.
-if (params.get('debug') === '1') window.__debug = { world, render: renderer };
+let state = 'title';
+let staged = null;
+let shotFrames = 0;
+let shotStartAt = 0;
+let lastSaveAt = 0;
+let lastT = performance.now();
+let acc = 0;
+let fps = 60;
+let fpsFrames = 0;
+let fpsAt = performance.now();
+const exploded = new Set();
+
+window.__errors = [];
+window.addEventListener('error', (e) => window.__errors.push(String(e.message || e.error)));
+window.addEventListener('unhandledrejection', (e) => window.__errors.push(String(e.reason)));
+
+const hud = createHud({
+  hideFps: !!shotName,
+  onStart: (useSave) => startGame(useSave),
+  onResume: () => { audio.click(); setPaused(false); },
+  onMenu: () => { audio.click(); toTitle(); },
+});
 
 function readSave() {
   try {
-    const raw = window.localStorage.getItem(SAVE_KEY);
-    return raw ? JSON.parse(raw) : null;
-  } catch {
+    const raw = localStorage.getItem(CFG.saveKey);
+    if (!raw) return null;
+    return JSON.parse(raw);
+  } catch (err) {
     return null;
   }
 }
 
 function writeSave() {
   try {
-    window.localStorage.setItem(SAVE_KEY, JSON.stringify(world.snapshot()));
-  } catch {
-    // Storage can be off (private windows): progress then lasts this visit only.
-  }
+    localStorage.setItem(CFG.saveKey, JSON.stringify(serializeWorld(world)));
+    lastSaveAt = world.time;
+  } catch (err) { /* storage full or blocked: the game keeps running */ }
 }
 
-function showOverlay(id) {
-  for (const el of document.querySelectorAll('.overlay')) el.classList.remove('show');
-  if (id) document.getElementById(id).classList.add('show');
+function toTitle() {
+  state = 'title';
+  staged = null;
+  hud.showTitle(saveSummary(readSave()));
+  hud.hideHud();
+  hud.hidePause();
+  audio.setEngine(false, 0);
 }
 
-function runShot(name) {
-  const staged = stageShot(name, world);
-  hud.update(world.state, staged.screen, 60);
-  if (staged.screen === 'title') showOverlay('overlay-start');
-  // Staging ran the sim without rendering, so the chase camera is still at its
-  // spawn point — snap it behind the player before the first painted frame.
-  renderer.snapCamera();
-  let painted = 0;
-  function paint() {
-    renderer.sync(world.state, 1 / 60, staged.screen);
-    painted += 1;
-    if (painted < 3) requestAnimationFrame(paint);
-    else {
-      window.__shotReady = true;
-      window.__game = {
-        fps: 60,
-        calls: renderer.info().render.calls,
-        triangles: renderer.info().render.triangles,
-        pixelRatio: renderer.pixelRatio(),
-      };
-    }
+function startGame(useSave) {
+  audio.resume();
+  audio.click();
+  audio.startMusic();
+  if (useSave) {
+    const data = readSave();
+    if (data) deserializeWorld(world, data);
   }
-  requestAnimationFrame(paint);
+  hud.hideTitle();
+  hud.showHud();
+  state = 'playing';
+  lastT = performance.now();
+  acc = 0;
 }
 
-function runGame() {
-  let screen = 'title';
-  let accumulator = 0;
-  let last = performance.now();
-  let fps = 60;
-  let lastDragAt = -10;
-  let lastSkidAt = -10;
-  const save = readSave();
-  const continueBtn = document.getElementById('btn-continue');
-  const bestEl = document.getElementById('best-line');
-  if (save && (save.cash > 0 || save.missionsDone > 0 || (save.fares || 0) > 0)) {
-    continueBtn.style.display = 'inline-block';
-    const parts = [`$${save.cash.toLocaleString('en-US')}`];
-    parts.push(save.storyDone ? 'cerita tamat' : `misi ${save.missionsDone}/3 selesai`);
-    if (save.fares > 0) parts.push(`${save.fares} taksi`);
-    if (save.topSpeed) parts.push(`top ${save.topSpeed} km/h`);
-    bestEl.textContent = `Save ditemukan: ${parts.join(' · ')}`;
-  }
-
-  function announce(message) {
-    status.textContent = message;
-  }
-
-  function startGame(fresh) {
-    if (fresh) {
-      world.reset(seed);
-    } else if (save) {
-      world.reset(seed);
-      world.applySnapshot(save);
-    }
-    audio.unlock();
-    audio.click();
-    screen = 'play';
-    showOverlay(null);
-    announce('Neon Bay. WASD jalan, E curi mobil, klik untuk menembak.');
-  }
-
-  function endRun(kind, title, line) {
-    screen = kind;
+function setPaused(on) {
+  if (on && state === 'playing') {
+    state = 'paused';
+    hud.showPause();
     writeSave();
-    document.getElementById('end-title').textContent = title;
-    document.getElementById('end-line').textContent = line;
-    showOverlay('overlay-end');
-    audio.busted();
-    announce(`${title} ${line}`);
+    audio.setEngine(false, 0);
+  } else if (!on && state === 'paused') {
+    state = 'playing';
+    hud.hidePause();
+    lastT = performance.now();
+    acc = 0;
   }
+}
 
-  document.getElementById('btn-start').addEventListener('click', () => startGame(true));
-  continueBtn.addEventListener('click', () => startGame(false));
-  document.getElementById('btn-resume').addEventListener('click', () => {
-    screen = 'play';
-    showOverlay(null);
-    audio.click();
-  });
-  document.getElementById('btn-restart').addEventListener('click', () => startGame(true));
-  document.getElementById('btn-title').addEventListener('click', () => {
-    screen = 'title';
-    showOverlay('overlay-start');
-  });
-
-  function handleActions() {
-    const actions = input.takeActions();
-    const drag = input.takeDrag();
-    if (drag.x !== 0 || drag.y !== 0) {
-      world.state.player.camYaw -= drag.x * 0.005;
-      world.state.player.camPitch = clamp((world.state.player.camPitch || 0) - drag.y * 0.002, -0.4, 0.5);
-      lastDragAt = world.state.time;
-    }
-    if (actions & ACTION_MUTE) {
-      audio.setMuted(!audio.isMuted());
-      announce(audio.isMuted() ? 'Suara mati.' : 'Suara hidup.');
-    }
-    if (screen === 'title' || screen === 'busted' || screen === 'wasted') {
-      if (actions & ACTION_CONFIRM) startGame(true);
-      return actions;
-    }
-    if (actions & ACTION_PAUSE) {
-      if (screen === 'play') {
-        screen = 'paused';
-        showOverlay('overlay-pause');
-        writeSave();
-        announce('Paused.');
-      } else if (screen === 'paused') {
-        screen = 'play';
-        showOverlay(null);
-        announce('Playing.');
-      }
-    }
-    return actions;
-  }
-
-  function step(actions) {
-    const p = world.state.player;
-    // While driving, the camera eases back behind the car unless the player
-    // dragged it recently — the car, not the camera, does the steering.
-    if (!p.onFoot && world.state.time - lastDragAt > 2) {
-      const car = world.state.cars.find((c) => c.id === p.carId);
-      if (car) p.camYaw = lerpAngle(p.camYaw, car.angle + Math.PI, 0.06);
-    }
-    const move = input.move();
-    const events = world.step(STEP, move, screen === 'play' ? actions : 0);
-    if (events & EVENT_SHOT) audio.gunshot();
-    if (events & EVENT_CRASH) audio.crash();
-    if (events & EVENT_PICKUP) audio.pickup();
-    if (events & EVENT_FARE) audio.fare();
-    if (events & EVENT_EXPLOSION) audio.explosion();
-    if (events & EVENT_MISSION) {
+function drainEvents() {
+  for (const ev of world.events) {
+    if (ev.type === 'mission' || ev.type === 'story') {
+      hud.toast(`Misi selesai! +$${ev.pay || 0}`);
       audio.mission();
       writeSave();
-    }
-    if (events & EVENT_BUSTED) endRun('busted', 'BUSTED!', 'Polisi menangkapmu. Kamu bangun di rumah sakit — dan dompetmu lebih tipis.');
-    else if (events & EVENT_WASTED) endRun('wasted', 'WASTED!', 'Kamu tumbang di jalanan Neon Bay. Tagihan rumah sakit menanti.');
-    // Hard cornering at speed screeches the tyres (throttled, one per second).
-    if (!p.onFoot && Math.abs(p.speed) > 22 && Math.abs(move.strafe) > 0.5 && world.state.time - lastSkidAt > 1) {
-      lastSkidAt = world.state.time;
-      audio.skid();
-    }
-  }
-
-  function frame(now) {
-    requestAnimationFrame(frame);
-    const dt = Math.min((now - last) / 1000, MAX_FRAME);
-    last = now;
-    if (dt > 0) fps += (1 / Math.max(dt, 1e-4) - fps) * 0.06;
-    const actions = handleActions();
-    const t0 = performance.now();
-    if (screen === 'play') {
-      accumulator += dt;
-      let guard = 0;
-      // Edge actions (enter car, shoot) fire ONCE per frame: the same bitmask
-      // must not be replayed into every catch-up sub-step, or one E press
-      // enters AND exits the car in the same frame (and a third replay fails
-      // with "no car nearby" because the car is already kind 'player').
-      // At 60 FPS the accumulator runs one step per frame so this never
-      // showed; at low FPS it runs up to 8.
-      while (accumulator >= STEP && guard < 8) {
-        step(guard === 0 ? actions : 0);
-        accumulator -= STEP;
-        guard += 1;
-        if (screen !== 'play') {
-          accumulator = 0;
-          break;
-        }
-      }
-      if (guard >= 8) accumulator = 0;
-    } else if (screen === 'title') {
-      // The city stays alive behind the menu: traffic and pedestrians drift on.
-      accumulator += dt;
-      while (accumulator >= STEP) {
-        world.step(STEP, { fwd: 0, strafe: 0, run: false }, 0);
-        accumulator -= STEP;
-      }
-    } else {
-      accumulator = 0;
-    }
-    const p = world.state.player;
-    audio.update(p.onFoot ? 0 : p.speed, !p.onFoot, world.state.wanted.stars, dt);
-    const tSync = performance.now();
-    renderer.sync(world.state, dt, screen);
-    const tHud = performance.now();
-    hud.update(world.state, screen, screen === 'play' ? fps : 60, dt);
-    if (params.get('debug') === '1') {
-      window.__perf = {
-        frameMs: +(performance.now() - t0).toFixed(2),
-        syncMs: +(tHud - tSync).toFixed(2),
-        hudMs: +(performance.now() - tHud).toFixed(2),
-        pixelRatio: renderer.pixelRatio(),
-      };
-    }
-    window.__fps = fps;
-    window.__game = {
-      fps,
-      calls: renderer.info().render.calls,
-      triangles: renderer.info().render.triangles,
-      pixelRatio: renderer.pixelRatio(),
-    };
-  }
-
-  document.addEventListener('visibilitychange', () => {
-    if (document.hidden && screen === 'play') {
-      screen = 'paused';
-      showOverlay('overlay-pause');
+    } else if (ev.type === 'steal') {
+      hud.toast('Mobil dicuri! Polisi mengincarmu.');
+      audio.steal();
+    } else if (ev.type === 'enter') {
+      hud.toast('Kamu masuk mobil.');
+    } else if (ev.type === 'escaped') {
+      hud.toast('Lolos dari polisi!');
+    } else if (ev.type === 'roadblock') {
+      hud.toast('Polisi memasang blokade jalan!');
+    } else if (ev.type === 'busted') {
+      hud.showEnd('busted', ev.fine);
+      audio.busted();
       writeSave();
-      announce('Paused.');
+    } else if (ev.type === 'wasted') {
+      hud.showEnd('wasted', ev.fine);
+      audio.wasted();
+      writeSave();
+    } else if (ev.type === 'pickup') {
+      hud.toast(ev.kind === 'cash' ? `+$${ev.value}` : `+${ev.value} HP`);
+      audio.pickup(ev.kind);
+    } else if (ev.type === 'fare') {
+      hud.toast(`Ongkos taksi: +$${ev.fare}`);
+      audio.fare();
+    } else if (ev.type === 'taxi') {
+      hud.toast(ev.text);
+    } else if (ev.type === 'crash') {
+      audio.crash(ev.speed || 10);
+    } else if (ev.type === 'shot') {
+      audio.shot();
+      if (ev.hit === 'wall') render.spark(world.lastShot.to[0], world.lastShot.to[1], world.lastShot.to[2]);
+    } else if (ev.type === 'wreck') {
+      hud.toast('Mobil meledak!');
     }
-  });
-
-  showOverlay('overlay-start');
-  announce('Neon Bay. Press Space or click Start to play.');
-  requestAnimationFrame(frame);
+  }
+  world.events.length = 0;
+  // Explosions for freshly wrecked cars.
+  for (const car of world.cars) {
+    if (car.wreck && !exploded.has(car.id)) {
+      exploded.add(car.id);
+      render.explode(car.x, 1, car.z);
+      audio.crash(20);
+    }
+  }
 }
 
-if (shot) runShot(shot);
-else runGame();
+function frame(now) {
+  requestAnimationFrame(frame);
+  const rawDt = Math.min(0.1, Math.max(0, (now - lastT) / 1000));
+  lastT = now;
+  fpsFrames++;
+  if (now - fpsAt >= 500) {
+    fps = (fpsFrames * 1000) / (now - fpsAt);
+    fpsFrames = 0;
+    fpsAt = now;
+    window.__fps = fps;
+  }
+
+  // UI actions are handled once per frame, never per substep.
+  if (input.actions.pause) {
+    input.actions.pause = false;
+    if (state === 'playing') setPaused(true);
+    else if (state === 'paused') setPaused(false);
+  }
+  if (input.actions.mute) {
+    input.actions.mute = false;
+    audio.setMuted(!audio.muted);
+    hud.toast(audio.muted ? 'Suara mati' : 'Suara hidup');
+  }
+  if (input.actions.confirm && state === 'title') {
+    input.actions.confirm = false;
+    startGame(false);
+  }
+
+  if (state === 'playing') {
+    // Chase camera: ease the orbit behind the car when not dragging.
+    // Skipped for staged shots: the chase still is composed head-on on
+    // purpose, and the auto-align would swing it back behind the car.
+    if (!shotName && !world.player.onFoot && now - input.lastDragAt > 1200) {
+      const car = world.cars.find((c) => c.id === world.player.carId);
+      if (car) {
+        const target = car.angle - Math.PI / 2;
+        let d = target - world.player.camYaw;
+        while (d > Math.PI) d -= Math.PI * 2;
+        while (d < -Math.PI) d += Math.PI * 2;
+        world.player.camYaw += d * Math.min(1, rawDt * 1.4);
+      }
+    }
+    // The shot ray is taken from the camera at the start of the frame.
+    let shotRay = null;
+    if (input.actions.fire) {
+      const dir = render.camera.getWorldDirection(new THREE.Vector3());
+      shotRay = {
+        ox: render.camera.position.x, oy: render.camera.position.y, oz: render.camera.position.z,
+        dx: dir.x, dy: dir.y, dz: dir.z,
+      };
+    }
+    acc += rawDt;
+    let steps = 0;
+    while (acc >= CFG.step && steps < CFG.maxStepsPerFrame) {
+      stepWorld(world, { keys: input.keys, actions: input.actions, look: input.look, shotRay }, CFG.step);
+      acc -= CFG.step;
+      steps++;
+    }
+    if (steps === CFG.maxStepsPerFrame) acc = 0;
+    drainEvents();
+    audio.setEngine(!world.player.onFoot, world.player.speed);
+    if (world.time - lastSaveAt > 30) writeSave();
+    if (staged) {
+      shotFrames++;
+      if (shotFrames >= 10 && now - shotStartAt >= 1000) window.__shotReady = true;
+    }
+  }
+
+  render.adapt(fps, now);
+  render.render(rawDt, now / 1000);
+  hud.update(world, fps, state);
+}
+
+function resize() {
+  render.resize(window.innerWidth, window.innerHeight);
+}
+window.addEventListener('resize', resize);
+resize();
+
+window.__game = { world, render, hud, input, audio, state: () => state };
+window.__fps = 60;
+window.__shotReady = false;
+window.__setLockRatio = (v) => render.lockRatio(v);
+if (debug) window.__debug = { world, render };
+
+if (shotName) {
+  // Staged capture: skip the title, drop straight into the composed shot.
+  // The title shot keeps its overlay; the gameplay shots show the HUD.
+  staged = stageShot(world, shotName);
+  shotFrames = 0;
+  shotStartAt = performance.now();
+  if (shotName === 'start') {
+    hud.showTitle(null);
+  } else {
+    hud.hideTitle();
+    hud.showHud();
+  }
+  state = 'playing';
+  audio.resume();
+} else {
+  toTitle();
+}
+
+requestAnimationFrame(frame);

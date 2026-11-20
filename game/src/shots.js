@@ -1,144 +1,110 @@
-// Screenshot scenes behind ?shot=start|drive|chase|mission (with &seed=N). Each one
-// plays the real rules forward from a fresh world for a fixed number of steps, so
-// the frame is what a short game really looks like — and the same seed always
-// gives the same frame. The judge's contact sheet is built from these, so every
-// shot is composed like a showcase: the sun in frame, the city alive, action
-// visible, the HUD telling the story (cash, stars, mission, minimap).
-import { STEP, WANTED } from './config.js';
-import { dist2 } from './random.js';
+// NEON BAY — staged states for the four screenshots. Each stage puts the
+// world into one composed moment (title, drive, chase, mission) using only
+// the simulation's own pieces, then the capture tool waits for the ready
+// flag before shooting. Nothing here is a mockup: every shot is a real
+// render of the running game.
+import { CFG } from './config.js';
 
-const AMBIENT_SECONDS = 6;
-const DRIVE_SECONDS = 4;
-const CHASE_SECONDS = 4;
-const MISSION_SECONDS = 4;
-
-function putPlayerInCar(world, x, z, angle) {
-  const state = world.state;
+function nearestCar(world, cls, x, z) {
   let best = null;
-  let bestD = Infinity;
-  for (const car of state.cars) {
-    if (car.kind !== 'traffic') continue;
-    const d = dist2(x, z, car.x, car.z);
-    if (d < bestD) {
-      bestD = d;
-      best = car;
-    }
+  let bestD = 1e9;
+  for (const car of world.cars) {
+    if (car.wreck) continue;
+    if (cls && car.cls !== cls) continue;
+    const d = Math.hypot(car.x - x, car.z - z);
+    if (d < bestD) { best = car; bestD = d; }
   }
-  if (!best) return null;
-  best.kind = 'player';
-  best.cls = 'sport'; // the showcase car is the fast one
-  best.route = null;
-  best.x = x;
-  best.z = z;
-  best.angle = angle;
-  best.speed = 16;
-  best.vx = Math.sin(angle) * 16;
-  best.vz = Math.cos(angle) * 16;
-  const p = state.player;
-  p.onFoot = false;
-  p.carId = best.id;
-  p.x = x;
-  p.z = z;
-  p.angle = angle;
-  p.camYaw = angle + Math.PI;
-  p.camPitch = 0.12;
   return best;
 }
 
-function facePoint(player, tx, tz) {
-  const dx = tx - player.x;
-  const dz = tz - player.z;
-  const len = Math.hypot(dx, dz) || 1;
-  // View direction is -(sin yaw, cos yaw); solve yaw from the desired view dir.
-  player.camYaw = Math.atan2(-dx / len, -dz / len);
+function putPlayerInCar(world, car, x, z, angle, speed) {
+  car.mode = 'player';
+  car.x = x; car.z = z;
+  car.angle = angle;
+  car.speed = speed;
+  car.targetSpeed = speed;
+  car.driver = false;
+  const p = world.player;
+  p.onFoot = false;
+  p.carId = car.id;
+  p.x = x; p.z = z;
+  p.angle = angle;
+  p.speed = Math.abs(speed);
+  p.camYaw = angle - Math.PI / 2;
+  p.camPitch = -0.1;
 }
 
-export function stageShot(name, world) {
-  const state = world.state;
+function spawnChasePolice(world, px, pz, angle, count) {
+  let made = 0;
+  const back = angle + Math.PI;
+  const offsets = [[14, -4], [20, 4], [28, -2], [38, 6], [48, -5]];
+  for (let i = 0; i < count; i++) {
+    const id = Math.max(...world.cars.map((c) => c.id)) + 1;
+    const ox = offsets[i % offsets.length][0];
+    const oz = offsets[i % offsets.length][1];
+    const car = {
+      id, kind: 'police', cls: 'police',
+      x: px + Math.cos(back) * ox - Math.sin(back) * oz,
+      z: pz + Math.sin(back) * ox + Math.cos(back) * oz,
+      angle, speed: 30, targetSpeed: CFG.carClasses.police.top,
+      color: 0xf2f2f2, hp: CFG.carHealth, wreck: false, driver: true,
+      route: [], wp: 0, mode: 'chase', brake: false, ramAt: -10, stuckAt: 0, idleAt: 0,
+    };
+    world.cars.push(car);
+    made++;
+  }
+  return made;
+}
+
+// Stage one of the four shots. Returns a short label for the log.
+export function stageShot(world, name) {
+  const p = world.player;
+  if (name === 'start') {
+    // Title moment: Kai on the west road, downtown ahead, sunset behind.
+    p.x = -168; p.z = -36;
+    p.angle = 0;
+    p.onFoot = true;
+    p.carId = -1;
+    p.camYaw = -Math.PI / 2;
+    p.camPitch = -0.08;
+    world.wanted.heat = 0;
+    world.wanted.stars = 0;
+    return 'title';
+  }
   if (name === 'drive') {
-    world.reset(1);
-    // Westbound down the sunset avenue (road z=32) toward the ocean and the
-    // setting sun, traffic ahead, downtown towers on the right. Four seconds
-    // keeps the car mid-city: a longer run drives it into the map corner.
-    putPlayerInCar(world, 130, 32, -Math.PI / 2);
-    for (let i = 0; i < DRIVE_SECONDS / STEP; i += 1) {
-      world.step(STEP, world.driveAssist(), 0);
-    }
-    // Staging bumps happen (traffic); the showcase frame shows a clean car.
-    state.player.health = 100;
-    state.message = '';
-    state.messageTimer = 0;
-    return { screen: 'play' };
+    // Sunset run: a sportscar heading west into the sun on the south road.
+    const car = nearestCar(world, 'sport', 0, 36) || nearestCar(world, null, 0, 36);
+    putPlayerInCar(world, car, 60, 36, Math.PI, 25);
+    world.wanted.heat = 0;
+    world.wanted.stars = 0;
+    return 'drive';
   }
   if (name === 'chase') {
-    world.reset(1);
-    // Westbound on the z=-32 avenue at sunset, three stars, cruisers closing in.
-    putPlayerInCar(world, 60, -32, -Math.PI / 2);
-    state.wanted.heat = 3 * WANTED.starHeat;
-    state.wanted.lastCrime = state.time;
-    for (let i = 0; i < CHASE_SECONDS / STEP; i += 1) {
-      world.step(STEP, world.driveAssist(), 0);
-    }
-    // Pull police cruisers INTO the frame: ahead-beside the player, boxing it
-    // in — cruisers placed behind sit behind the chase camera, and the player
-    // (44 u/s) outruns their 34 u/s, so they fall out of frame within a second.
-    // Starting ahead, they drift back toward the player's flanks and stay
-    // visible at the frame edges. One smoking wreck nearby as proof of the fight.
-    const p = state.player;
-    const cops = state.cars.filter((c) => c.kind === 'police');
-    cops.slice(0, 2).forEach((cop, i) => {
-      const ahead = 6 + i * 3;
-      const side = i === 0 ? -9 : 9;
-      cop.x = p.x + Math.sin(p.angle) * ahead + Math.cos(p.angle) * side;
-      cop.z = p.z + Math.cos(p.angle) * ahead - Math.sin(p.angle) * side;
-      cop.angle = p.angle;
-      cop.speed = 42;
-    });
-    if (cops[2]) {
-      cops[2].health = 0;
-      cops[2].smoke = 1;
-      cops[2].x = p.x + Math.sin(p.angle) * 26;
-      cops[2].z = p.z + Math.cos(p.angle) * 26;
-      cops[2].angle = p.angle + 0.6;
-    }
-    for (let i = 0; i < 1.2 / STEP; i += 1) {
-      world.step(STEP, world.driveAssist(), 0);
-    }
-    state.player.health = 100;
-    // A staged drive can clip a pedestrian on the way; the toast would sit
-    // across the mission banner in the shot, so clear it for the frame.
-    state.message = '';
-    state.messageTimer = 0;
-    return { screen: 'play' };
+    // Three stars: Kai fleeing west with three police on his bumper. The
+    // camera sits AHEAD of the car (head-on) so the pursuing police are
+    // visible beyond it; a chase cam behind the player would hide them
+    // behind the camera. Police stay close so they read in the frame.
+    const car = nearestCar(world, 'sport', -20, -36) || nearestCar(world, null, -20, -36);
+    putPlayerInCar(world, car, -20, -36, Math.PI, 28);
+    p.camYaw = Math.PI + Math.PI / 2; // camera in front, looking back
+    world.wanted.heat = 300;
+    world.wanted.stars = 3;
+    world.wanted.lastCrimeAt = world.time;
+    spawnChasePolice(world, -20, -36, Math.PI, 3);
+    return 'chase';
   }
-  if (name === 'mission') {
-    world.reset(1);
-    const p = state.player;
-    const b = state.mission.beacon;
-    // On foot on the OPEN west docks, west of the beacon — the camera sits over
-    // the pier, the beacon pillar is ahead, downtown towers behind it. (Standing
-    // east of the beacon puts the camera inside a building block, which fills
-    // the frame with a wall.)
-    p.x = b.x - 14;
-    p.z = b.z;
-    p.onFoot = true;
-    p.camPitch = 0.1;
-    facePoint(p, b.x, b.z);
-    for (let i = 0; i < MISSION_SECONDS / STEP; i += 1) {
-      world.step(STEP, { fwd: 0, strafe: 0, run: false }, 0);
-    }
-    return { screen: 'play' };
-  }
-  // Default: the title scene — golden hour over downtown, city alive behind the menu.
-  world.reset(1);
-  const p = state.player;
-  p.x = 84;
-  p.z = 24;
+  // mission: on foot at the docks, the beacon pillar ahead, ocean beyond.
+  world.mission.index = 0;
+  world.mission.storyDone = false;
+  p.x = -136; p.z = 136;
+  // The camera looks along (cos(angle), -sin(angle)), so the angle that
+  // faces the beacon at (-150, 150) is atan2(-dz, dx), not atan2(dz, dx).
+  p.angle = Math.atan2(-(150 - 136), -150 - (-136));
   p.onFoot = true;
-  p.camYaw = Math.PI / 2; // look west, into the sunset and the towers
-  p.camPitch = 0.18; // slightly low camera: the skyline fills the frame
-  for (let i = 0; i < AMBIENT_SECONDS / STEP; i += 1) {
-    world.step(STEP, { fwd: 0, strafe: 0, run: false }, 0);
-  }
-  return { screen: 'title' };
+  p.carId = -1;
+  p.camYaw = p.angle - Math.PI / 2;
+  p.camPitch = -0.1;
+  world.wanted.heat = 0;
+  world.wanted.stars = 0;
+  return 'mission';
 }

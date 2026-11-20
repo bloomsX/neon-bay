@@ -1,180 +1,76 @@
-<!doctype html>
-<html lang="en">
+<!DOCTYPE html>
+<html lang="id">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="color-scheme" content="dark">
+<title>NEON BAY — Game Dunia Terbuka</title>
 <link rel="icon" href="data:,">
-<title>NEON BAY — Open-World Crime Game</title>
 <style>
-  html, body { margin: 0; height: 100%; overflow: hidden; background: #14101f;
-    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; color: #f2ecff; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; height: 100%; overflow: hidden; background: #12081f;
+    font-family: "Segoe UI", Arial, sans-serif; color: #f2ecff; }
   #game { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
-  #status { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 
-  /* ---------- HUD ---------- */
-  #hud { position: fixed; inset: 0; pointer-events: none; z-index: 5; }
-  .panel { background: rgba(12, 10, 24, 0.62); border: 1px solid rgba(255, 255, 255, 0.14);
-    border-radius: 12px; backdrop-filter: blur(6px); }
-  #hud-top { position: absolute; top: 14px; left: 14px; right: 14px; display: flex;
-    justify-content: space-between; align-items: flex-start; gap: 12px; }
-  #hud-left { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
-  #hud-cash { font-size: 26px; font-weight: 800; letter-spacing: 0.5px; color: #2eff7a;
-    padding: 8px 16px; text-shadow: 0 0 14px rgba(46, 255, 122, 0.45); }
-  #hud-cash-pop { font-size: 16px; font-weight: 800; color: #2eff7a; padding: 2px 10px;
-    opacity: 0; transform: translateY(4px); transition: opacity 0.2s, transform 0.2s; }
-  #hud-cash-pop.show { opacity: 1; transform: translateY(0); }
-  #hud-district { font-size: 12px; font-weight: 700; letter-spacing: 3px; color: #c9c2e8;
-    padding: 4px 12px; }
-  #hud-right { display: flex; flex-direction: column; align-items: flex-end; gap: 8px; }
-  #hud-stars { font-size: 24px; letter-spacing: 4px; color: #8b93a3; padding: 6px 14px; }
-  #hud-stars.hot { color: #ffd94a; text-shadow: 0 0 16px rgba(255, 217, 74, 0.7); animation: pulse 0.9s infinite; }
-  @keyframes pulse { 50% { transform: scale(1.06); } }
-  #hud-health { display: flex; align-items: center; gap: 8px; padding: 8px 12px; font-weight: 700; font-size: 14px; }
-  #hud-health-bar { width: 130px; height: 10px; border-radius: 6px; background: rgba(255,255,255,0.16); overflow: hidden; }
-  #hud-health-fill { height: 100%; width: 100%; background: linear-gradient(90deg, #2eff7a, #a4ff5e); border-radius: 6px; }
-  #hud-health-fill.low { background: linear-gradient(90deg, #ff2e3c, #ff8a3c); }
-  #hud-mission { position: absolute; top: 14px; left: 50%; transform: translateX(-50%);
-    text-align: center; padding: 10px 22px; max-width: 46vw; }
-  #hud-mission-title { font-size: 15px; font-weight: 800; letter-spacing: 2px; color: #ffd94a; }
-  #hud-mission-text { font-size: 13px; color: #e8e2ff; margin-top: 3px; line-height: 1.35; }
-  #hud-mission-dist { font-size: 13px; font-weight: 800; color: #2ec4ff; margin-top: 3px; }
-  #hud-mission-steps { font-size: 13px; letter-spacing: 6px; color: #ffd94a; margin-top: 4px; }
-  #hud-taxi { position: absolute; top: 150px; left: 50%; transform: translateX(-50%);
-    font-size: 14px; font-weight: 800; color: #ffc93c; background: rgba(12,10,24,0.7);
-    padding: 7px 16px; border-radius: 999px; opacity: 0; transition: opacity 0.25s; white-space: nowrap; }
-  #hud-taxi.show { opacity: 1; }
-  #hud-message { position: absolute; top: 108px; left: 50%; transform: translateX(-50%);
-    font-size: 15px; font-weight: 700; color: #fff; background: rgba(12,10,24,0.7);
-    padding: 8px 18px; border-radius: 999px; opacity: 0; transition: opacity 0.25s; white-space: nowrap; }
-  #hud-message.show { opacity: 1; }
-  #hud-bottom { position: absolute; left: 14px; bottom: 14px; right: 14px; display: flex;
-    justify-content: space-between; align-items: flex-end; }
-  #minimap { width: 184px; height: 184px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.2); }
-  #hud-speed { font-size: 30px; font-weight: 800; padding: 10px 18px; color: #fff; min-width: 150px;
-    text-shadow: 0 0 16px rgba(255, 46, 136, 0.6); }
-  #hud-speed small { font-size: 13px; font-weight: 600; color: #c9c2e8; display: block; text-align: right; }
-  #hud-speed-track { height: 6px; border-radius: 4px; background: rgba(255,255,255,0.16); margin-top: 6px; overflow: hidden; }
-  #hud-speed-bar { height: 100%; width: 0; background: linear-gradient(90deg, #2ec4ff, #ff2e88); border-radius: 4px; }
-  #hud-fps { position: absolute; right: 14px; top: 108px; font-size: 12px; font-weight: 700;
-    color: #9dff6e; padding: 5px 10px; }
-  #hud-fps.slow { color: #ff8a3c; }
-  #hud-help { position: absolute; bottom: 14px; left: 50%; transform: translateX(-50%);
-    font-size: 12px; color: rgba(255,255,255,0.65); background: rgba(12,10,24,0.5);
-    padding: 5px 12px; border-radius: 999px; white-space: nowrap; }
-  #crosshair { position: absolute; left: 50%; top: 50%; width: 18px; height: 18px; margin: -9px 0 0 -9px;
-    display: none; }
-  #crosshair::before, #crosshair::after { content: ''; position: absolute; background: #fff;
-    box-shadow: 0 0 6px rgba(0,0,0,0.8); }
-  #crosshair::before { left: 8px; top: 0; width: 2px; height: 18px; }
-  #crosshair::after { left: 0; top: 8px; width: 18px; height: 2px; }
-  #vignette { position: fixed; inset: 0; pointer-events: none; z-index: 4; opacity: 0;
-    background: radial-gradient(ellipse at center, transparent 52%, rgba(255, 20, 40, 0.55) 100%); }
+  .hud { position: fixed; inset: 0; pointer-events: none; z-index: 5; }
+  .hud-topleft { position: absolute; top: 16px; left: 16px; }
+  .hud-cash { font-size: 30px; font-weight: 800; color: #ffd23e;
+    text-shadow: 0 2px 0 rgba(0,0,0,.6), 0 0 18px rgba(255,210,62,.35); }
+  .hud-health { width: 210px; height: 12px; margin-top: 6px; background: rgba(0,0,0,.55);
+    border: 1px solid rgba(255,255,255,.25); border-radius: 6px; overflow: hidden; }
+  .hud-health-bar { height: 100%; width: 100%; background: #59d867; transition: width .2s; }
+  .hud-stars { margin-top: 6px; font-size: 24px; letter-spacing: 3px;
+    text-shadow: 0 2px 0 rgba(0,0,0,.6); }
+  .hud-fps { position: absolute; top: 16px; right: 16px; font-size: 13px; font-weight: 700;
+    background: rgba(0,0,0,.55); border: 1px solid rgba(255,255,255,.2); border-radius: 6px;
+    padding: 4px 9px; color: #bfefff; }
+  .hud-mission { position: absolute; left: 16px; bottom: 210px; max-width: 330px;
+    background: rgba(10,6,24,.72); border: 1px solid rgba(255,46,136,.55); border-left: 5px solid #ff2e88;
+    border-radius: 8px; padding: 10px 14px; }
+  .hud-mission-title { font-size: 16px; font-weight: 800; color: #ff8ac0; }
+  .hud-mission-brief { font-size: 13px; color: #e8e2ff; margin-top: 3px; line-height: 1.4; }
+  .hud-mission-dist { font-size: 12px; color: #ffd23e; margin-top: 5px; font-weight: 700; }
+  .hud-mapwrap { position: absolute; left: 16px; bottom: 16px; border: 2px solid rgba(255,255,255,.35);
+    border-radius: 8px; overflow: hidden; box-shadow: 0 4px 18px rgba(0,0,0,.5); }
+  .hud-map { display: block; width: 190px; height: 190px; }
+  .hud-speed { position: absolute; right: 20px; bottom: 20px; font-size: 34px; font-weight: 800;
+    color: #fff; text-shadow: 0 2px 0 rgba(0,0,0,.65), 0 0 16px rgba(41,211,255,.5); }
+  .hud-cross { position: absolute; left: 50%; top: 50%; transform: translate(-50%,-50%);
+    font-size: 22px; font-weight: 700; color: rgba(255,255,255,.85); text-shadow: 0 0 6px #000; }
+  .hud-toasts { position: absolute; left: 50%; bottom: 24px; transform: translateX(-50%);
+    display: flex; flex-direction: column; align-items: center; gap: 6px; }
+  .toast { background: rgba(10,6,24,.85); border: 1px solid rgba(255,210,62,.6); color: #ffe9a8;
+    font-size: 14px; font-weight: 700; padding: 7px 14px; border-radius: 20px;
+    box-shadow: 0 4px 14px rgba(0,0,0,.5); white-space: nowrap; }
 
-  /* ---------- Overlays ---------- */
-  .overlay { position: fixed; inset: 0; display: none; align-items: center; justify-content: center;
-    z-index: 10; background: linear-gradient(180deg, rgba(20,10,40,0.55), rgba(20,10,40,0.82)); }
-  .overlay.show { display: flex; }
-  .card { text-align: center; max-width: 640px; padding: 34px 44px; border-radius: 20px;
-    background: rgba(14, 10, 28, 0.78); border: 1px solid rgba(255, 46, 136, 0.35);
-    box-shadow: 0 0 60px rgba(255, 46, 136, 0.25); backdrop-filter: blur(8px); }
-  .card h1 { margin: 0; font-size: 64px; font-weight: 900; letter-spacing: 4px; line-height: 1;
-    background: linear-gradient(90deg, #ff2e88, #ff9a3d, #ffd94a);
+  .overlay { position: fixed; inset: 0; z-index: 10; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; text-align: center;
+    background: linear-gradient(180deg, rgba(18,8,31,.82), rgba(40,12,52,.88)); padding: 20px; }
+  .title-logo { font-size: 84px; font-weight: 900; letter-spacing: 10px; line-height: 1;
+    background: linear-gradient(90deg, #ff2e88, #ff9a2e 45%, #29d3ff);
     -webkit-background-clip: text; background-clip: text; color: transparent;
-    text-shadow: 0 0 40px rgba(255, 46, 136, 0.35); }
-  .card h2 { margin: 0 0 6px; font-size: 40px; font-weight: 900; letter-spacing: 3px; color: #ffd94a; }
-  .card .tag { margin: 10px 0 0; font-size: 13px; letter-spacing: 4px; color: #2ec4ff; font-weight: 700; }
-  .card .features { margin: 12px 0 0; font-size: 13px; font-weight: 700; letter-spacing: 1px; color: #2eff7a; }
-  .card p { color: #ddd6f5; line-height: 1.55; font-size: 15px; }
-  .card .controls { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 22px; text-align: left;
-    font-size: 14px; margin: 18px auto 6px; max-width: 460px; color: #cfc8ee; }
-  .card .controls b { color: #fff; background: rgba(255,255,255,0.12); border-radius: 6px; padding: 1px 8px; }
-  .btn { pointer-events: auto; cursor: pointer; display: inline-block; margin: 14px 6px 0; border: none;
-    font: inherit; font-size: 17px; font-weight: 800; letter-spacing: 1px; color: #14081f;
-    background: linear-gradient(90deg, #ff2e88, #ff9a3d); padding: 13px 34px; border-radius: 999px;
-    box-shadow: 0 6px 24px rgba(255, 46, 136, 0.45); }
-  .btn:hover { filter: brightness(1.12); }
-  .btn.ghost { background: rgba(255,255,255,0.1); color: #fff; box-shadow: none;
-    border: 1px solid rgba(255,255,255,0.25); }
-  #btn-continue { display: none; }
-  .fine { font-size: 12px; color: #8f88b0; margin-top: 16px; line-height: 1.5; }
-  #best-line { color: #2eff7a; font-weight: 700; font-size: 14px; min-height: 20px; }
+    filter: drop-shadow(0 0 22px rgba(255,46,136,.55)); }
+  .title-sub { margin-top: 8px; font-size: 18px; color: #ffd9a8; font-weight: 600; }
+  .title-story { max-width: 620px; margin-top: 18px; font-size: 15px; line-height: 1.6; color: #e8e2ff; }
+  .title-controls { display: grid; grid-template-columns: 1fr 1fr; gap: 5px 26px; margin-top: 20px;
+    text-align: left; font-size: 14px; }
+  .ctl-row { display: flex; gap: 10px; align-items: baseline; }
+  .ctl-key { min-width: 92px; font-weight: 800; color: #29d3ff; }
+  .ctl-desc { color: #cfc8ee; }
+  .btn-big { pointer-events: auto; margin-top: 22px; font-size: 20px; font-weight: 800; letter-spacing: 2px;
+    color: #1a0a24; background: linear-gradient(90deg, #ff2e88, #ff9a2e); border: none; border-radius: 10px;
+    padding: 13px 44px; cursor: pointer; box-shadow: 0 6px 24px rgba(255,46,136,.45); }
+  .btn-big:hover { filter: brightness(1.12); }
+  .btn-ghost { background: transparent; color: #ffd23e; border: 2px solid #ffd23e; box-shadow: none; }
+  .title-foot { margin-top: 22px; font-size: 12px; color: #9a8fc0; }
+  .pause-title { font-size: 56px; font-weight: 900; letter-spacing: 14px; color: #fff;
+    text-shadow: 0 0 24px rgba(41,211,255,.7); }
+  .end-title { font-size: 64px; font-weight: 900; letter-spacing: 8px; color: #ff3b30;
+    text-shadow: 0 0 26px rgba(255,59,48,.6); }
+  .end-text { margin-top: 10px; font-size: 17px; color: #ffe9e8; }
 </style>
 </head>
 <body>
-<canvas id="game" aria-label="Neon Bay: an open-world crime game. Drive, steal cars, outrun the police and finish the story."></canvas>
-<p id="status" role="status" aria-live="polite"></p>
-<div id="vignette"></div>
-
-<div id="hud">
-  <div id="hud-top">
-    <div id="hud-left">
-      <div id="hud-cash" class="panel">$0</div>
-      <div id="hud-cash-pop" class="panel">+$0</div>
-      <div id="hud-district" class="panel">NEON BAY</div>
-    </div>
-    <div id="hud-mission" class="panel">
-      <div id="hud-mission-title">MISI 1 — THE PICKUP</div>
-      <div id="hud-mission-text">Ambil paket di dermaga barat.</div>
-      <div id="hud-mission-dist"></div>
-      <div id="hud-mission-steps">○○○</div>
-    </div>
-    <div id="hud-right">
-      <div id="hud-stars" class="panel">☆☆☆☆☆</div>
-      <div id="hud-health" class="panel">HP <div id="hud-health-bar"><div id="hud-health-fill"></div></div><span id="hud-health-text">100</span></div>
-    </div>
-  </div>
-  <div id="hud-message"></div>
-  <div id="hud-taxi"></div>
-  <div id="hud-fps" class="panel">60 FPS</div>
-  <div id="hud-bottom">
-    <canvas id="minimap" width="184" height="184"></canvas>
-    <div id="hud-speed" class="panel">ON FOOT<small>NEON BAY</small><div id="hud-speed-track"><div id="hud-speed-bar"></div></div></div>
-  </div>
-  <div id="hud-help">WASD gerak · Shift lari · E curi / keluar mobil · Klik / F tembak · drag mouse putar kamera · P jeda · M suara</div>
-  <div id="crosshair"></div>
-</div>
-
-<div id="overlay-start" class="overlay">
-  <div class="card">
-    <h1>NEON BAY</h1>
-    <div class="tag">OPEN-WORLD CRIME GAME</div>
-    <div class="features">3 MISSIONS · 5-STAR WANTED · TAXI JOB · 60 FPS</div>
-    <p><b>Kai Mercer</b>, kurir yang salah antar paket — sekarang seluruh kota
-    memburunya. Curi mobil, kabur dari polisi, dan antar paket terakhir ke
-    <b>Club Neon</b> sebelum matahari terbenam. Kota hidup: lalu lintas, pejalan
-    kaki, polisi, dan tiga misi cerita.</p>
-    <div class="controls">
-      <span><b>W A S D</b> jalan / nyetir</span><span><b>Shift</b> lari</span>
-      <span><b>E</b> curi mobil / keluar</span><span><b>Klik / F</b> tembak</span>
-      <span><b>Drag mouse</b> putar kamera</span><span><b>P</b> jeda &nbsp; <b>M</b> suara</span>
-    </div>
-    <div id="best-line"></div>
-    <button id="btn-start" class="btn">▶ &nbsp;MULAI GAME</button>
-    <button id="btn-continue" class="btn ghost">LANJUTKAN SAVE</button>
-    <p class="fine">Game orisinal buatan bloomsX untuk make.fun bounty “Make GTA 6”.
-    Semua kota, karakter, kendaraan, cerita, seni dan suara dibuat sendiri —
-    tidak ada aset Rockstar Games. Berjalan offline, tanpa unduhan tambahan.</p>
-  </div>
-</div>
-
-<div id="overlay-pause" class="overlay">
-  <div class="card">
-    <h2>JEDA</h2>
-    <p>Neon Bay menunggumu. Progres tersimpan otomatis.</p>
-    <button id="btn-resume" class="btn">LANJUTKAN</button>
-    <button id="btn-title" class="btn ghost">MENU UTAMA</button>
-  </div>
-</div>
-
-<div id="overlay-end" class="overlay">
-  <div class="card">
-    <h2 id="end-title">BUSTED!</h2>
-    <p id="end-line"></p>
-    <button id="btn-restart" class="btn">COBA LAGI</button>
-  </div>
-</div>
-
+<canvas id="game"></canvas>
 <script type="module" src="./src/main.js"></script>
 </body>
 </html>

@@ -1,74 +1,43 @@
 {
-  "viewport": "1280x720",
-  "seconds": 5,
-  "scenes": {
-    "title": {
-      "frames": 16,
-      "avgFps": 3.1,
-      "minFps": 2.5,
-      "p95Ms": 400.1,
-      "maxMs": 400.1,
-      "longFrames": 15,
-      "hitchesOver50": 15,
-      "fps": 20.245949503361864,
-      "calls": 23,
-      "triangles": 10632,
-      "pixelRatio": 1
-    },
-    "walk": {
-      "frames": 18,
-      "avgFps": 3.4,
-      "minFps": 2.5,
-      "p95Ms": 399.9,
-      "maxMs": 399.9,
-      "longFrames": 17,
-      "hitchesOver50": 17,
-      "fps": 5.767002713772077,
-      "calls": 19,
-      "triangles": 10080,
-      "pixelRatio": 1
-    },
-    "drive": {
-      "frames": 16,
-      "avgFps": 3.2,
-      "minFps": 2.5,
-      "p95Ms": 399.9,
-      "maxMs": 399.9,
-      "longFrames": 15,
-      "hitchesOver50": 15,
-      "fps": 4.545338846129265,
-      "calls": 15,
-      "triangles": 9898,
-      "pixelRatio": 1
-    },
-    "chase": {
-      "frames": 18,
-      "avgFps": 3.5,
-      "minFps": 2.6,
-      "p95Ms": 383.3,
-      "maxMs": 383.3,
-      "longFrames": 17,
-      "hitchesOver50": 17,
-      "fps": 4.147862451747374,
-      "calls": 14,
-      "triangles": 9790,
-      "pixelRatio": 1
-    },
-    "chaseSmall": {
-      "frames": 70,
-      "avgFps": 13.8,
-      "minFps": 6,
-      "p95Ms": 100,
-      "maxMs": 166.7,
-      "longFrames": 60,
-      "hitchesOver50": 50,
-      "fps": 20.89795158860524,
-      "calls": 14,
-      "triangles": 8806,
-      "pixelRatio": 1
-    }
+  "generatedAt": "2026-11-20T06:51:19.568Z",
+  "note": "Headless Chromium on SwiftShader (software rendering, no GPU). These numbers are a floor; real graphics hardware runs much faster.",
+  "viewport": {
+    "width": 1280,
+    "height": 720
   },
-  "errors": [],
-  "webgl2": true,
-  "inputLatencyFrames": 1
+  "scenes": [
+    {
+      "scene": "title",
+      "avg": 4.64,
+      "min": 3.91,
+      "calls": 17,
+      "triangles": 22996,
+      "pixelRatio": 0.5
+    },
+    {
+      "scene": "walk",
+      "avg": 4.11,
+      "min": 3.87,
+      "calls": 17,
+      "triangles": 22996,
+      "pixelRatio": 0.5
+    },
+    {
+      "scene": "drive",
+      "avg": 4.79,
+      "min": 4.29,
+      "calls": 22,
+      "triangles": 23056,
+      "pixelRatio": 0.5
+    },
+    {
+      "scene": "chase",
+      "avg": 4.22,
+      "min": 3.87,
+      "calls": 15,
+      "triangles": 22992,
+      "pixelRatio": 0.5
+    }
+  ],
+  "consoleErrors": []
 }
