@@ -4,25 +4,25 @@
       "name": "1-start.jpg",
       "res": "1280x720 (2x supersampled)",
       "quality": 90,
-      "bytes": 125192
+      "bytes": 125606
     },
     {
       "name": "2-drive.jpg",
       "res": "1280x720 (2x supersampled)",
       "quality": 90,
-      "bytes": 159172
+      "bytes": 155107
     },
     {
       "name": "3-chase.jpg",
       "res": "1280x720 (2x supersampled)",
       "quality": 90,
-      "bytes": 140349
+      "bytes": 145579
     },
     {
       "name": "4-mission.jpg",
       "res": "1280x720 (2x supersampled)",
       "quality": 90,
-      "bytes": 118828
+      "bytes": 116883
     }
   ],
   "failed": false
