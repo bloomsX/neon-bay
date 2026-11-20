@@ -1,0 +1,74 @@
+{
+  "viewport": "1280x720",
+  "seconds": 5,
+  "scenes": {
+    "title": {
+      "frames": 15,
+      "avgFps": 3,
+      "minFps": 2.1,
+      "p95Ms": 483.3,
+      "maxMs": 483.3,
+      "longFrames": 14,
+      "hitchesOver50": 14,
+      "fps": 22.38609042933665,
+      "calls": 23,
+      "triangles": 10632,
+      "pixelRatio": 1
+    },
+    "walk": {
+      "frames": 16,
+      "avgFps": 3.1,
+      "minFps": 2.4,
+      "p95Ms": 416.6,
+      "maxMs": 416.6,
+      "longFrames": 15,
+      "hitchesOver50": 15,
+      "fps": 6.257305977852874,
+      "calls": 19,
+      "triangles": 10092,
+      "pixelRatio": 1
+    },
+    "drive": {
+      "frames": 14,
+      "avgFps": 2.6,
+      "minFps": 2,
+      "p95Ms": 500,
+      "maxMs": 500,
+      "longFrames": 13,
+      "hitchesOver50": 13,
+      "fps": 4.788431455841283,
+      "calls": 28,
+      "triangles": 11190,
+      "pixelRatio": 1
+    },
+    "chase": {
+      "frames": 13,
+      "avgFps": 2.6,
+      "minFps": 1.6,
+      "p95Ms": 616.7,
+      "maxMs": 616.7,
+      "longFrames": 12,
+      "hitchesOver50": 12,
+      "fps": 4.258860215079132,
+      "calls": 15,
+      "triangles": 9946,
+      "pixelRatio": 1
+    },
+    "chaseSmall": {
+      "frames": 53,
+      "avgFps": 10.4,
+      "minFps": 5.5,
+      "p95Ms": 183.3,
+      "maxMs": 183.4,
+      "longFrames": 52,
+      "hitchesOver50": 47,
+      "fps": 10.58354446635806,
+      "calls": 11,
+      "triangles": 8026,
+      "pixelRatio": 1
+    }
+  },
+  "errors": [],
+  "webgl2": true,
+  "inputLatencyFrames": 1
+}
