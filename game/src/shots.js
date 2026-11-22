@@ -63,12 +63,20 @@
     if (state.police.heli) return;
     var mesh = window.NB.Vehicles.makeHelicopterMesh();
     state.scene.add(mesh);
+    // Ahead of the player, relative to the player's facing, so the
+    // helicopter is in frame (upper-centre) whichever way the player
+    // faces. 26 units ahead, 4 to the left, lower than the live-game
+    // cruise height so it reads in a still frame.
+    var a = state.player.angle;
+    var fx = Math.sin(a), fz = Math.cos(a);
+    var lx = Math.cos(a), lz = -Math.sin(a); // player's left
+    var dx = fx * 26 + lx * 4, dz = fz * 26 + lz * 4;
     state.police.heli = {
-      mesh: mesh, x: state.player.x + 18, z: state.player.z - 14,
-      y: 15, angle: 0, rotorSpin: 0, shotHeight: 15,
+      mesh: mesh, x: state.player.x + dx, z: state.player.z + dz,
+      y: 12, angle: 0, rotorSpin: 0, shotHeight: 12,
     };
-    // Ahead of the player so the helicopter is in frame, not overhead.
-    state.police.heliAngle = 4.71;
+    // updateHeli reproduces this spot (orbit radius 26) from the angle.
+    state.police.heliAngle = Math.atan2(dx, dz);
   }
 
   function putPlayerInCar(state, defKey, x, z, angle, speed) {
@@ -93,6 +101,7 @@
 
   function applyShot(state, name) {
     var player = state.player;
+    var camDist = null; // per-shot camera distance override (drive shot)
     // Clear any live police/heli first so the shot is fully deterministic.
     state.police.units.forEach(function (u) { state.scene.remove(u.mesh); });
     state.police.units = [];
@@ -131,18 +140,25 @@
       window.NB.HUD.showDialogue('LENA', 'Four stars, a helicopter, and half the department behind us. Drive, Rook. Just drive.');
       window.NB.HUD.notify('JOB 7 / 8 — THE GETAWAY  •  5 STARS  •  AIR-1 OVERHEAD', 'mission');
     } else if (name === 'drive') {
-      // Street driving on Sunset Strip: traffic, pedestrians, no heat.
-      putPlayerInCar(state, 'comet', 0, 40, 0, 22);
-      startJob(state, 0, 1);
+      // On foot at Coral Pier: the player walks the beach toward the pier
+      // with pedestrians close by — the on-foot play the dossier was
+      // missing. JOB 2, no heat, sunset over the ocean.
+      player.x = -222; player.z = -14; player.angle = 0;
+      player.inCar = false;
+      player.speed = 0;
+      state.playerMesh.visible = true;
+      state.playerMesh.position.set(player.x, 0, player.z);
+      state.playerMesh.rotation.y = player.angle;
+      startJob(state, 1, 1);
       state.police.stars = 0;
-      placeTrafficNear(state, [[-4, 34, 0, 12], [4, -28, Math.PI, 11], [-3, 62, 0, 13], [5, 84, 0, 9]]);
-      placePedsNear(state, [[-11, 18, 8, 0], [11, 44, -8, 0], [-11, -6, 6, 0], [11, -20, -6, 0], [-11, 70, 10, 0]]);
+      placePedsNear(state, [[-4, 8, 6, 0], [5, 6, -6, 0], [-8, 12, 4, 0], [9, 10, -4, 0]]);
+      camDist = 7.5;
       player.cash = 1250;
       player.health = 100;
-      player.armour = 25;
-      player.weaponIndex = 2;
-      window.NB.HUD.showDialogue('DARIO', 'Nice and easy through the Strip. Traffic is light, the sun is doing its thing. Enjoy it.');
-      window.NB.HUD.notify('JOB 1 / 8 — FIRST WHEELS  •  DRIVE TO MARINA ROW', 'mission');
+      player.armour = 0;
+      player.weaponIndex = 0;
+      window.NB.HUD.showDialogue('DARIO', 'Pier is right there, Rook. On foot, no heat, nobody looking. Walk it like you own the place.');
+      window.NB.HUD.notify('JOB 2 / 8 — SUNSET RUN  •  ON FOOT AT CORAL PIER', 'mission');
     } else if (name === 'chase') {
       // Close pursuit: 3 stars, helicopter, two units on the bumper —
       // heading east along Marina Row (z = -80 is a road).
@@ -189,7 +205,7 @@
     // Snap the camera behind the player so the first rendered frame is the
     // composed one, not a fly-in.
     var cam = state.camera;
-    var dist = player.inCar ? 13 : 9;
+    var dist = camDist !== null ? camDist : (player.inCar ? 13 : 9);
     var behind = player.angle + Math.PI;
     cam.position.set(
       player.x + Math.sin(behind) * dist,

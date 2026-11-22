@@ -174,7 +174,9 @@
   function updateHeli(state, player, dt, time) {
     var heli = state.heli;
     if (!heli) return;
-    state.heliAngle += dt * 0.35;
+    // While staging a screenshot the helicopter holds its staged spot
+    // (rotor, beacon and spotlight keep running) so it stays in frame.
+    if (!window.NB.state.shotFreeze) state.heliAngle += dt * 0.35;
     var orbit = CFG.POLICE.heliOrbit;
     heli.x = player.x + Math.sin(state.heliAngle) * orbit;
     heli.z = player.z + Math.cos(state.heliAngle) * orbit;

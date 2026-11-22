@@ -134,7 +134,7 @@
     // A visible searchlight beam so the spotlight reads in a still frame.
     var beam = new THREE.Mesh(
       new THREE.ConeGeometry(4.5, 24, 16, 1, true),
-      new THREE.MeshBasicMaterial({ color: 0xfff2c0, transparent: true, opacity: 0.07, side: THREE.DoubleSide, depthWrite: false })
+      new THREE.MeshBasicMaterial({ color: 0xfff2c0, transparent: true, opacity: 0.16, side: THREE.DoubleSide, depthWrite: false })
     );
     beam.position.y = -12;
     g.add(beam);

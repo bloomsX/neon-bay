@@ -5,7 +5,7 @@
       "shot": "cover",
       "width": 1280,
       "height": 720,
-      "bytes": 118815,
+      "bytes": 119412,
       "quality": 82,
       "console_errors": []
     },
@@ -14,7 +14,7 @@
       "shot": "drive",
       "width": 1280,
       "height": 720,
-      "bytes": 116781,
+      "bytes": 90949,
       "quality": 82,
       "console_errors": []
     },
@@ -23,7 +23,7 @@
       "shot": "chase",
       "width": 1280,
       "height": 720,
-      "bytes": 122223,
+      "bytes": 125033,
       "quality": 82,
       "console_errors": []
     },
@@ -32,7 +32,7 @@
       "shot": "mission",
       "width": 1280,
       "height": 720,
-      "bytes": 86850,
+      "bytes": 87060,
       "quality": 82,
       "console_errors": []
     }
