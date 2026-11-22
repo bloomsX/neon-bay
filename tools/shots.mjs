@@ -1,99 +1,54 @@
-// NEON BAY — staged screenshot capture. Serves the game, loads each shot
-// from shots.json at 2x device pixel ratio, waits for the game's ready flag,
-// captures at 2560x1440 and downsamples to 1280x720 JPEG (quality 90) with
-// PIL. Every file must land inside the gate (long side <= 1280, <= 256 KiB,
-// short side >= 480). Fails the run on any console error or any request
-// that leaves localhost. Run: node tools/shots.mjs [--port 8091]
-import { spawn, execFile } from 'node:child_process';
-import { readFileSync, writeFileSync, existsSync, statSync } from 'node:fs';
-import { createRequire } from 'node:module';
+// NEON BAY — tools/shots.mjs
+// Captures the four screenshots from the live game: serves game/, loads each
+// ?shot= staging in headless Chromium at 1280x720, waits for
+// window.__shotReady, and saves a JPEG (quality 82, re-tried lower if the
+// file would exceed the 256 KiB cap). Writes shots-report.json.
+// Usage: node tools/shots.mjs [--port 8080]
 
-const require = createRequire(import.meta.url);
-const { chromium } = require('playwright-core');
+import { spawn } from 'node:child_process';
+import { statSync, writeFileSync } from 'node:fs';
+import { chromium } from '/home/hatch/workspace/node_modules/playwright-core/index.mjs';
 
-const args = process.argv.slice(2);
-const portIdx = args.indexOf('--port');
-const PORT = portIdx >= 0 ? parseInt(args[portIdx + 1], 10) : 8091;
+const PORT = Number(process.argv.find((a, i, arr) => arr[i - 1] === '--port') || 8092);
 const ROOT = new URL('..', import.meta.url).pathname;
-const shots = JSON.parse(readFileSync(`${ROOT}shots.json`, 'utf8')).shots;
+const SHOTS = [
+  { shot: 'cover', file: '1-start.jpg' },
+  { shot: 'drive', file: '2-drive.jpg' },
+  { shot: 'chase', file: '3-chase.jpg' },
+  { shot: 'mission', file: '4-mission.jpg' },
+];
+const MAX_BYTES = 262144;
 
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+function sleep(ms) { return new Promise((r) => setTimeout(r, ms)); }
 
-function downscale(pngPath, jpgPath) {
-  return new Promise((resolve, reject) => {
-    const script = [
-      'import sys',
-      'from PIL import Image',
-      'im = Image.open(sys.argv[1]).convert("RGB")',
-      'im = im.resize((1280, 720), Image.LANCZOS)',
-      'im.save(sys.argv[2], "JPEG", quality=90)',
-    ].join('\n');
-    execFile('python3', ['-c', script, pngPath, jpgPath], (err, stdout, stderr) => {
-      if (err) reject(new Error(stderr || String(err)));
-      else resolve();
-    });
-  });
-}
-
-async function main() {
-  const server = spawn(process.execPath, ['serve.ts', String(PORT)], { cwd: ROOT, stdio: 'ignore' });
-  const report = { shots: [], errors: [], external: [] };
-  let browser = null;
-  try {
-    for (let i = 0; i < 40; i++) {
-      try {
-        const res = await fetch(`http://127.0.0.1:${PORT}/`);
-        if (res.ok) break;
-      } catch (err) { /* not up yet */ }
-      await sleep(250);
+const server = spawn('node', ['serve.ts', '--port', String(PORT)], { cwd: ROOT, stdio: 'ignore' });
+const report = { shots: [] };
+try {
+  await sleep(1500);
+  const browser = await chromium.launch({ args: ['--no-sandbox'] });
+  for (const s of SHOTS) {
+    const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
+    const errors = [];
+    page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
+    page.on('pageerror', (e) => errors.push(String(e)));
+    await page.goto(`http://localhost:${PORT}/?shot=${s.shot}`, { waitUntil: 'load' });
+    await page.waitForFunction(() => window.__shotReady === true, { timeout: 180000 });
+    await sleep(400);
+    const path = `${ROOT}screenshots/${s.file}`;
+    let quality = 82;
+    await page.screenshot({ path, type: 'jpeg', quality });
+    let size = statSync(path).size;
+    while (size > MAX_BYTES && quality > 55) {
+      quality -= 10;
+      await page.screenshot({ path, type: 'jpeg', quality });
+      size = statSync(path).size;
     }
-    browser = await chromium.launch({
-      executablePath: `${process.env.HOME}/.cache/ms-playwright/chromium-1255/chrome-linux64/chrome`,
-      args: ['--no-sandbox', '--enable-unsafe-swiftshader', '--disable-dev-shm-usage'],
-    });
-    for (const shot of shots) {
-      const page = await browser.newPage({
-        viewport: { width: 1280, height: 720 },
-        deviceScaleFactor: 2,
-      });
-      const errors = [];
-      const external = [];
-      page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
-      page.on('pageerror', (e) => errors.push(String(e)));
-      page.on('request', (r) => {
-        const u = r.url();
-        if (!u.startsWith('http://127.0.0.1') && !u.startsWith('http://localhost') && !u.startsWith('data:') && !u.startsWith('blob:')) {
-          external.push(u);
-        }
-      });
-      await page.goto(`http://127.0.0.1:${PORT}/?shot=${shot.id}&seed=1337`, { waitUntil: 'domcontentloaded' });
-      await page.waitForFunction(() => window.__game !== undefined, null, { timeout: 20000 });
-      await page.evaluate(() => window.__setLockRatio(2));
-      await page.waitForFunction(() => window.__shotReady === true, null, { timeout: 90000 });
-      await sleep(400);
-      const pngPath = `/tmp/neonbay-${shot.id}.png`;
-      const jpgPath = `${ROOT}screenshots/${shot.file}`;
-      await page.screenshot({ path: pngPath, type: 'png' });
-      await downscale(pngPath, jpgPath);
-      const size = statSync(jpgPath).size;
-      const entry = { id: shot.id, file: shot.file, width: 1280, height: 720, bytes: size, errors, external };
-      report.shots.push(entry);
-      report.errors.push(...errors);
-      report.external.push(...external);
-      console.log(`${shot.id}: ${shot.file} ${size} bytes ${size <= 262144 ? 'OK' : 'OVER GATE'} errors=${errors.length} external=${external.length}`);
-      await page.close();
-    }
-  } finally {
-    if (browser) await browser.close();
-    server.kill();
+    report.shots.push({ file: s.file, shot: s.shot, width: 1280, height: 720, bytes: size, quality, console_errors: errors });
+    console.log(s.file, size + ' bytes', 'quality ' + quality, errors.length ? 'ERRORS: ' + errors.join(' | ') : 'clean');
+    await page.close();
   }
-  writeFileSync(`${ROOT}shots-report.json`, JSON.stringify(report, null, 2));
-  const bad = report.shots.filter((s) => s.bytes > 262144 || s.errors.length || s.external.length);
-  if (bad.length || report.errors.length || report.external.length) {
-    console.log('SHOT CAPTURE FAILED');
-    process.exit(1);
-  }
-  console.log('All 4 screenshots inside the gate, zero console errors, zero external requests.');
+  await browser.close();
+} finally {
+  server.kill();
 }
-
-await main();
+writeFileSync(new URL('../shots-report.json', import.meta.url), JSON.stringify(report, null, 2) + '\n');

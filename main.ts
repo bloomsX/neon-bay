@@ -1,53 +1,30 @@
-// NEON BAY — the entrypoint (Node 22, erasable TypeScript, no build step).
-// Hands in the game: copies game/ and the screenshots into the output
-// directory and writes dossier.json with the kit's own buildDossier, so the
-// dossier the scorer recomputes is byte-identical to the one handed in.
-//
-//   MAKEFUN_OUTPUT_DIR=/output node main.ts
-//
-// The output directory defaults to /output. The run is deterministic: the
-// same repository always writes the same bytes.
-import { buildDossier } from './vendor/makefun-game.ts';
-import { cpSync, existsSync, mkdirSync, readdirSync, writeFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+// NEON BAY — main.ts
+// Entrypoint for the make.fun bounty. It hands the game in: copies game/
+// and screenshots/ from this repository into the output directory and
+// writes /output/dossier.json with buildDossier from vendor/makefun-game.ts.
+// Standard library only, deterministic output, no timestamps, no network.
+
+import { cpSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { buildDossier } from './vendor/makefun-game.ts';
 
-const repoRoot = dirname(fileURLToPath(import.meta.url));
-const outDir = process.env.MAKEFUN_OUTPUT_DIR || '/output';
-const gameDir = join(repoRoot, 'game');
-const shotsDir = join(repoRoot, 'screenshots');
+const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)));
+const outputDir = resolve(process.env.MAKEFUN_OUTPUT_DIR || '/output');
 
-const CAPS = {
+rmSync(outputDir, { recursive: true, force: true });
+mkdirSync(outputDir, { recursive: true });
+
+cpSync(join(repoRoot, 'game'), join(outputDir, 'game'), { recursive: true });
+cpSync(join(repoRoot, 'screenshots'), join(outputDir, 'screenshots'), { recursive: true });
+
+const dossier = buildDossier(outputDir, {
   text_max_bytes: 163840,
   screenshots: { max: 4, max_bytes: 262144 },
   game_max_files: 993,
   game_max_bytes: 50331648,
-};
+  game_path_max_bytes: 1000,
+});
+writeFileSync(join(outputDir, 'dossier.json'), dossier);
 
-function isImage(name) {
-  return /\.(png|jpe?g)$/i.test(name);
-}
-
-function main() {
-  if (!existsSync(gameDir)) throw new Error('game/ is missing from the repository');
-  if (!existsSync(join(gameDir, 'index.html'))) throw new Error('game/index.html is missing');
-  mkdirSync(join(outDir, 'game'), { recursive: true });
-  mkdirSync(join(outDir, 'screenshots'), { recursive: true });
-  cpSync(gameDir, join(outDir, 'game'), { recursive: true });
-  const shots = existsSync(shotsDir) ? readdirSync(shotsDir).filter(isImage).sort() : [];
-  if (shots.length < 3) throw new Error(`screenshots/ holds ${shots.length} images, need 3 or 4`);
-  for (const name of shots.slice(0, 4)) {
-    cpSync(join(shotsDir, name), join(outDir, 'screenshots', name));
-  }
-  const dossier = buildDossier(outDir, CAPS);
-  writeFileSync(join(outDir, 'dossier.json'), dossier);
-  const parsed = JSON.parse(new TextDecoder().decode(dossier));
-  console.log(`NEON BAY dossier written to ${outDir}`);
-  console.log(`  schema: ${parsed.schema}`);
-  console.log(`  dossier text: ${parsed.text.length} bytes (cap 163840)`);
-  console.log(`  images: ${parsed.images.length} (cover ${parsed.cover})`);
-  console.log(`  screenshots: ${shots.slice(0, 4).join(', ')}`);
-  console.log(`  dossier.json: ${dossier.length} bytes`);
-}
-
-main();
+console.log('NEON BAY handed in to ' + outputDir);

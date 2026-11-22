@@ -1,24 +1,5 @@
-# Dependencies and local installs
 node_modules/
-package-lock.json
-yarn.lock
-pnpm-lock.yaml
-
-# Editor and OS files
-.vscode/
-.idea/
-*.swp
-*.swo
-*~
-.DS_Store
-Thumbs.db
-
-# Local test artefacts (play-test screenshots and reports stay on this machine)
-check/
-*.log
-tmp/
-
-# Build outputs
-dist/
 out/
 output/
+.DS_Store
+*.log

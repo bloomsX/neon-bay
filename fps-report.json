@@ -1,43 +1,10 @@
 {
-  "generatedAt": "2026-11-20T06:51:19.568Z",
-  "note": "Headless Chromium on SwiftShader (software rendering, no GPU). These numbers are a floor; real graphics hardware runs much faster.",
-  "viewport": {
-    "width": 1280,
-    "height": 720
-  },
-  "scenes": [
-    {
-      "scene": "title",
-      "avg": 4.64,
-      "min": 3.91,
-      "calls": 17,
-      "triangles": 22996,
-      "pixelRatio": 0.5
-    },
-    {
-      "scene": "walk",
-      "avg": 4.11,
-      "min": 3.87,
-      "calls": 17,
-      "triangles": 22996,
-      "pixelRatio": 0.5
-    },
-    {
-      "scene": "drive",
-      "avg": 4.79,
-      "min": 4.29,
-      "calls": 22,
-      "triangles": 23056,
-      "pixelRatio": 0.5
-    },
-    {
-      "scene": "chase",
-      "avg": 4.22,
-      "min": 3.87,
-      "calls": 15,
-      "triangles": 22992,
-      "pixelRatio": 0.5
-    }
-  ],
-  "consoleErrors": []
+  "measured_at": "local",
+  "viewport": "1280x720",
+  "scene": "chase shot: traffic + pedestrians + 3-star pursuit + helicopter",
+  "duration_s": 8.4,
+  "frames": 11,
+  "fps": 1.3,
+  "frame_ms_avg": 763.94,
+  "console_errors": []
 }

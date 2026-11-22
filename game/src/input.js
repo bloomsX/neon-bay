@@ -1,83 +1,96 @@
-// NEON BAY — keyboard and mouse input. Keys are held state; actions are
-// edge-triggered (a keydown fires once, never on repeat), and the simulation
-// consumes each action on its first substep so a slow frame can never fire
-// one twice. A click only shoots when the press barely moved (a drag orbits
-// the camera instead).
-export function createInput(canvas) {
-  const keys = { up: false, down: false, left: false, right: false, run: false };
-  const actions = { steal: false, fire: false, pause: false, mute: false, confirm: false };
-  const look = { dx: 0, dy: 0 };
-  let lastDragAt = 0;
-  let dragging = false;
-  let downX = 0;
-  let downY = 0;
-  let downAt = 0;
-  let moved = 0;
+// NEON BAY — input.js
+// Keyboard and mouse input. WASD moves and drives, E enters/steals cars and
+// advances dialogue, F punches or fires, 1-7 switch weapons, Space drifts,
+// R changes the radio station, P pauses, M starts the next job, Q saves.
+// Mouse drag orbits the camera; the game never needs pointer lock, so it
+// works the same in a screenshot harness as in a player's hands.
 
-  const keyMap = {
-    KeyW: 'up', ArrowUp: 'up',
-    KeyS: 'down', ArrowDown: 'down',
-    KeyA: 'left', ArrowLeft: 'left',
-    KeyD: 'right', ArrowRight: 'right',
-    ShiftLeft: 'run', ShiftRight: 'run',
-  };
+(function () {
+  'use strict';
 
-  function onKeyDown(e) {
-    const k = keyMap[e.code];
-    if (k) {
+  var keys = {};
+  var orbit = { yaw: 0, pitch: 0 };
+  var dragging = false;
+  var lastX = 0, lastY = 0;
+  var pressed = {};   // edge-triggered keys, consumed once per frame
+
+  function keyName(e) {
+    var k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+    return k;
+  }
+
+  function attach() {
+    window.addEventListener('keydown', function (e) {
+      var k = keyName(e);
+      if ([' ', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright'].indexOf(k) !== -1) e.preventDefault();
+      if (!keys[k]) pressed[k] = true;
       keys[k] = true;
-      e.preventDefault();
-      return;
+    });
+    window.addEventListener('keyup', function (e) {
+      keys[e.key.length === 1 ? e.key.toLowerCase() : e.key] = false;
+    });
+    window.addEventListener('blur', function () {
+      keys = {};
+      dragging = false;
+    });
+    var canvasHolder = document.getElementById('game');
+    if (canvasHolder) {
+      canvasHolder.addEventListener('mousedown', function (e) {
+        dragging = true; lastX = e.clientX; lastY = e.clientY;
+      });
+      window.addEventListener('mousemove', function (e) {
+        if (!dragging) return;
+        orbit.yaw -= (e.clientX - lastX) * 0.005;
+        orbit.pitch += (e.clientY - lastY) * 0.004;
+        orbit.pitch = Math.max(-0.35, Math.min(0.5, orbit.pitch));
+        lastX = e.clientX; lastY = e.clientY;
+      });
+      window.addEventListener('mouseup', function () { dragging = false; });
     }
-    if (e.repeat) return;
-    if (e.code === 'KeyE') actions.steal = true;
-    else if (e.code === 'KeyF') actions.fire = true;
-    else if (e.code === 'KeyP' || e.code === 'Escape') actions.pause = true;
-    else if (e.code === 'KeyM') actions.mute = true;
-    else if (e.code === 'Enter' || e.code === 'Space') actions.confirm = true;
-    if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) e.preventDefault();
+    // Start / resume / respawn buttons (HUD-owned, wired here).
+    document.addEventListener('click', function (e) {
+      var t = e.target;
+      if (!t || !t.id) return;
+      if (t.id === 'start-button') window.NB.Main.startGame();
+      if (t.id === 'resume-button') window.NB.Main.togglePause();
+      if (t.id === 'respawn-button') window.NB.Main.respawn();
+    });
   }
 
-  function onKeyUp(e) {
-    const k = keyMap[e.code];
-    if (k) keys[k] = false;
+  // The per-frame driving/walking input vector.
+  function readDrive() {
+    return {
+      forward: !!(keys.w || keys.arrowup),
+      back: !!(keys.s || keys.arrowdown),
+      left: !!(keys.a || keys.arrowleft),
+      right: !!(keys.d || keys.arrowright),
+      handbrake: !!keys[' '],
+      run: !!keys.shift,
+    };
   }
 
-  function onPointerDown(e) {
-    dragging = true;
-    moved = 0;
-    downX = e.clientX;
-    downY = e.clientY;
-    downAt = performance.now();
-    canvas.setPointerCapture(e.pointerId);
+  function wasPressed(k) {
+    if (pressed[k]) { pressed[k] = false; return true; }
+    return false;
   }
 
-  function onPointerMove(e) {
-    if (!dragging) return;
-    const dx = e.movementX || 0;
-    const dy = e.movementY || 0;
-    moved += Math.abs(dx) + Math.abs(dy);
-    look.dx += dx;
-    look.dy += dy;
-    lastDragAt = performance.now();
+  function consumePressed() { pressed = {}; }
+
+  function anyWeaponKey() {
+    for (var i = 1; i <= 7; i++) {
+      if (wasPressed(String(i))) return i - 1;
+    }
+    return -1;
   }
 
-  function onPointerUp(e) {
-    dragging = false;
-    const dt = performance.now() - downAt;
-    if (moved < 6 && dt < 400) actions.fire = true;
-  }
-
-  window.addEventListener('keydown', onKeyDown);
-  window.addEventListener('keyup', onKeyUp);
-  canvas.addEventListener('pointerdown', onPointerDown);
-  canvas.addEventListener('pointermove', onPointerMove);
-  canvas.addEventListener('pointerup', onPointerUp);
-  canvas.addEventListener('pointercancel', () => { dragging = false; });
-
-  return {
-    keys, actions, look,
-    get lastDragAt() { return lastDragAt; },
-    get dragging() { return dragging; },
+  window.NB = window.NB || {};
+  window.NB.Input = {
+    attach: attach,
+    keys: keys,
+    orbit: orbit,
+    readDrive: readDrive,
+    wasPressed: wasPressed,
+    consumePressed: consumePressed,
+    anyWeaponKey: anyWeaponKey,
   };
-}
+})();
