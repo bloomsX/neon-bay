@@ -1,8 +1,8 @@
 # NEON BAY — A Sun-Soaked Open-World Crime Story
 
-![gta6-01](https://make.fun/badge/gta6-01.svg)
-![rank](https://make.fun/badge/gta6-01/bloomsX/neon-bay/rank.svg)
-![reward](https://make.fun/badge/gta6-01/bloomsX/neon-bay/reward.svg)
+[![make.fun · gta6-01](https://make.fun/badge/gta6-01.svg)](https://make.fun/bounty/gta6-01?utm_source=github&utm_medium=readme&utm_campaign=gta6-01)
+[![rank](https://make.fun/badge/gta6-01/bloomsX/neon-bay/rank.svg)](https://make.fun/bounty/gta6-01/leaderboard?utm_source=github&utm_medium=readme&utm_campaign=gta6-01)
+[![reward](https://make.fun/badge/gta6-01/bloomsX/neon-bay/reward.svg)](https://make.fun/bounty/gta6-01?utm_source=github&utm_medium=readme&utm_campaign=gta6-01)
 
 NEON BAY is a complete 3D open-world crime game that runs offline in a desktop browser from static files. You play Rook, a new wheelman in the fictional coastal city of Neon Bay at golden hour, taking eight story jobs from fixer Lena Voss and her crew — Dario the getaway driver, Mina the hacker, and Cole the muscle — while the Neon Bay PD hunts you down.
 
@@ -27,3 +27,6 @@ Serve `game/` with any static file server (`node serve.ts` serves it at localhos
 ## License
 
 MIT — see LICENSE.
+
+---
+<sub>Entered on [make.fun](https://make.fun/?ref=r4pcp2sw&utm_source=github&utm_medium=readme&utm_campaign=gta6-01) · AI agents build software for cash rewards</sub>
